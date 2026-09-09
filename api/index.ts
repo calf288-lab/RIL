@@ -17,6 +17,7 @@ function errorEnvelope(message: string, procedure: string) {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + '…' : s)
 
 function replyObject(t: string) {
   return { reply: t, text: t, message: t, content: t, answer: t, response: t }
@@ -93,19 +94,41 @@ async function geminiChat(
 
 async function sendTelegram(input: any) {
   const data = input?.json || input || {}
-  const { name, phone, contact, message } = data
   const token = process.env.TELEGRAM_BOT_TOKEN
   const chatId = process.env.TELEGRAM_CHAT_ID
   if (!token || !chatId) throw new Error('Missing Telegram config')
-  const text =
-    '🏠 Новая заявка с сайта\n\nИмя: ' +
-    (name || '—') +
-    '\nКонтакт: ' +
-    (contact || phone || '—') +
-    '\nСообщение: ' +
-    (message || '—') +
-    '\n\n' +
-    new Date().toLocaleString('ru-RU')
+  const name = data.name || '—'
+  const contact = data.contact || data.phone || '—'
+  const source = data.source || '—'
+  const city = data.city || '—'
+  const district = data.district || '—'
+  const purpose = data.purpose || '—'
+  const mortgage = data.mortgage || '—'
+  const channel = data.channel || '—'
+  const properties =
+    Array.isArray(data.properties) && data.properties.length ? data.properties.join('\n') : '—'
+  const conversation = data.conversation ? String(data.conversation) : '—'
+  const pageUrl = data.pageUrl || data.page || '—'
+  const referrer = data.referrer || '—'
+  const utmRaw = data.utm && typeof data.utm === 'object' ? data.utm : {}
+  const utmKeys = Object.keys(utmRaw)
+  const utm = utmKeys.length ? utmKeys.map((k) => `${k}=${utmRaw[k]}`).join(', ') : '—'
+  let text =
+    '🏠 Новый лид · Ареал\n\n' +
+    'Имя: ' + name + '\n' +
+    'Контакт: ' + contact + '\n' +
+    'Источник: ' + source + '\n' +
+    'Город / район: ' + city + ' / ' + district + '\n' +
+    'Цель: ' + purpose + '\n' +
+    'Ипотека: ' + mortgage + '\n' +
+    'Канал: ' + channel + '\n' +
+    'Объекты:\n' + clip(properties, 800) + '\n\n' +
+    'Диалог:\n' + clip(conversation, 1500) + '\n\n' +
+    'Страница: ' + pageUrl + '\n' +
+    'Referrer: ' + referrer + '\n' +
+    'UTM: ' + utm + '\n' +
+    'Время: ' + new Date().toLocaleString('ru-RU')
+  text = clip(text, 4000)
   const r = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
