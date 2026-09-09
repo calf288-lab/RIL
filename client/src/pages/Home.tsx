@@ -42,6 +42,17 @@ function trackingContext() {
   return { pageUrl: window.location.href, referrer: document.referrer, utm };
 }
 
+function openAgentEverywhere(detail?: { message?: string }) {
+  const fn = (window as any).__openAgent;
+  if (typeof fn === "function") {
+    fn(detail ? { detail } : {});
+  } else {
+    window.dispatchEvent(new CustomEvent("agent-open", detail ? { detail } : undefined));
+  }
+  const dock = document.querySelector(".agent-dock");
+  if (dock) dock.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
 type AgentStep = "start" | "purpose" | "district" | "mortgage" | "preview" | "contact";
 type LiveMessage = { role: "user" | "assistant"; content: string };
 
@@ -71,6 +82,14 @@ const faqs = [
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+const agentStyles = `
+.agent-teaser{background:linear-gradient(90deg,#7c3aed,#4f46e5);border-radius:999px;padding:10px 12px 10px 18px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 34px rgba(124,58,237,.5);animation:agentPulse 2.2s ease-in-out infinite;border:1px solid rgba(255,255,255,.25)}
+.agent-teaser span{color:#fff;font-weight:600;font-size:13px}
+.agent-teaser button{background:#fff;color:#4f46e5;border:none;border-radius:999px;padding:9px 16px;font-weight:800;font-size:13px;display:flex;gap:7px;align-items:center;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.agent-launcher{box-shadow:0 12px 40px rgba(124,58,237,.65);animation:agentPulse 2.2s ease-in-out infinite}
+@keyframes agentPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+`;
 
 function AgentWidget() {
   const [open, setOpen] = useState(false);
@@ -110,8 +129,8 @@ function AgentWidget() {
   sendLiveRef.current = sendLive;
 
   useEffect(() => {
-    const onOpen = (event: Event) => {
-      const detail = (event as CustomEvent).detail || {};
+    const onOpen = (event?: any) => {
+      const detail = event?.detail || {};
       setOpen(true);
       setLiveOpen(true);
       const message = typeof detail.message === "string" ? detail.message : "";
@@ -120,8 +139,12 @@ function AgentWidget() {
       }
       setTimeout(() => liveInputRef.current?.focus(), 200);
     };
-    window.addEventListener("agent-open", onOpen);
-    return () => window.removeEventListener("agent-open", onOpen);
+    (window as any).__openAgent = onOpen;
+    window.addEventListener("agent-open", onOpen as EventListener);
+    return () => {
+      window.removeEventListener("agent-open", onOpen as EventListener);
+      delete (window as any).__openAgent;
+    };
   }, []);
 
   const recommendedProperties = useMemo(() => {
@@ -169,6 +192,7 @@ function AgentWidget() {
 
   return (
     <div className={`agent-dock ${open ? "agent-dock-open" : ""}`} style={{ position: "fixed", right: 12, bottom: 12, zIndex: 80 }}>
+      <style>{agentStyles}</style>
       {!open && <div className="agent-teaser"><span>Подобрать квартиру?</span><button onClick={openAgent}>Спросить Амира <ArrowRight size={14} /></button></div>}
       <button className="agent-launcher" onClick={() => (open ? setOpen(false) : openAgent())} aria-label={open ? "Закрыть ИИ-агента" : "Открыть ИИ-агента"}>
         {open ? <X size={22} /> : <><span className="agent-launcher-pulse" /><Bot size={25} /></>}
@@ -221,11 +245,11 @@ function AgentPreviewMock() {
     const message = mockQuestion.trim();
     if (!message) return;
     trackGoal("agent_mock_question", { message });
-    window.dispatchEvent(new CustomEvent("agent-open", { detail: { message } }));
+    openAgentEverywhere({ message });
     setMockQuestion("");
   };
   return (
-    <div className="agent-preview-card" onClick={() => { trackGoal("agent_preview_open"); window.dispatchEvent(new CustomEvent("agent-open")); }} style={{ cursor: "pointer" }}>
+    <div className="agent-preview-card" onClick={() => { trackGoal("agent_preview_open"); openAgentEverywhere(); }} style={{ cursor: "pointer" }}>
       <div className="preview-glow" />
       <div className="preview-head"><div className="agent-avatar"><Bot size={21} /></div><div><b>Амир · ИИ-агент</b><small><span /> Сейчас онлайн</small></div><span className="preview-dots">•••</span></div>
       <div className="preview-body">
@@ -286,7 +310,7 @@ export default function Home() {
     </section>
 
     <section id="agent" className="agent-intro section-dark">
-      <div className="section-inner agent-intro-grid"><div className="agent-intro-copy"><span className="section-eyebrow">ПЛАВАЮЩИЙ АГЕНТ НА САЙТЕ</span><h2>Помогает посетителю<br /><span className="text-gradient-blue">не потеряться в выборе</span></h2><p>Вместо навязчивого звонка — спокойный диалог в удобный момент. Амир задаёт несколько вопросов, отвечает по делу и предлагает контакт только когда это действительно полезно.</p><button className="inline-link" onClick={() => { trackGoal("agent_intro_open"); window.dispatchEvent(new CustomEvent("agent-open")); }}>Открыть агента внизу экрана <ArrowRight size={16} /></button></div><AgentPreviewMock /></div>
+      <div className="section-inner agent-intro-grid"><div className="agent-intro-copy"><span className="section-eyebrow">ПЛАВАЮЩИЙ АГЕНТ НА САЙТЕ</span><h2>Помогает посетителю<br /><span className="text-gradient-blue">не потеряться в выборе</span></h2><p>Вместо навязчивого звонка — спокойный диалог в удобный момент. Амир задаёт несколько вопросов, отвечает по делу и предлагает контакт только когда это действительно полезно.</p><button className="inline-link" onClick={() => { trackGoal("agent_intro_open"); openAgentEverywhere(); }}>Открыть агента внизу экрана <ArrowRight size={16} /></button></div><AgentPreviewMock /></div>
     </section>
 
     <PropertyExplorer />
