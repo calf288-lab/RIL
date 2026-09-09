@@ -18,6 +18,10 @@ function errorEnvelope(message: string, procedure: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+function replyObject(t: string) {
+  return { reply: t, text: t, message: t, content: t, answer: t, response: t }
+}
+
 async function groqChat(messages: any[], key: string): Promise<string | null> {
   try {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -108,11 +112,11 @@ async function agentChat(input: any) {
   const geminiKey = process.env.GEMINI_API_KEY
   if (groqKey) {
     const t = await groqChat(messages, groqKey)
-    if (t) return t
+    if (t) return replyObject(t)
   }
   if (geminiKey) {
     const { text, lastStatus } = await geminiChat(messages, geminiKey)
-    if (text) return text
+    if (text) return replyObject(text)
     throw new Error('Gemini failed, last status: ' + lastStatus)
   }
   throw new Error('AI unavailable: no providers configured')
@@ -148,7 +152,7 @@ function getProcedure(req: any): string {
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers': 'Content-Type')
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return
