@@ -1,5 +1,19 @@
 type Handler = (input: any) => any | Promise<any>
 
+const TRPC_INTERNAL = -32603
+
+function errorEnvelope(message: string, procedure: string) {
+  return {
+    error: {
+      json: {
+        message,
+        code: TRPC_INTERNAL,
+        data: { code: 'INTERNAL_SERVER_ERROR', httpStatus: 500, path: procedure },
+      },
+    },
+  }
+}
+
 async function sendTelegram(input: any) {
   const data = input?.json || input || {}
   const { name, phone, message } = data
@@ -34,18 +48,24 @@ async function agentChat(input: any) {
       parts: [{ text: String(m.content || '') }],
     })),
   ]
-  const r = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents }),
-    },
-  )
-  if (!r.ok) throw new Error('Gemini error: ' + r.status)
-  const d: any = await r.json()
-  return d?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    'Свяжитесь с Амиром напрямую: +7 927 409-91-79'
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest']
+  let lastStatus = 0
+  for (const model of models) {
+    const r = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents }),
+      },
+    )
+    lastStatus = r.status
+    if (!r.ok) continue
+    const d: any = await r.json()
+    const text = d?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (text) return text
+  }
+  throw new Error('Gemini error: ' + lastStatus)
 }
 
 function catalogList() {
@@ -98,20 +118,23 @@ export default async function handler(req: any, res: any) {
   }
 
   const results: any[] = []
+  let failed: string | null = null
   const keys = Object.keys(batchBody)
   const items = keys.length ? keys : ['empty']
   for (const key of items) {
     const h = handlers[procedure]
     if (!h) {
-      results.push({ error: { json: { message: 'Unknown procedure: ' + procedure } } })
+      failed = 'Unknown procedure: ' + procedure
+      results.push(errorEnvelope(failed, procedure))
       continue
     }
     try {
       const out = await h(key === 'empty' ? {} : batchBody[key])
       results.push({ result: { data: { json: out } } })
     } catch (e: any) {
-      results.push({ error: { json: { message: e?.message || 'Internal error' } } })
+      failed = e?.message || 'Internal error'
+      results.push(errorEnvelope(failed, procedure))
     }
   }
-  res.status(200).json(results)
+  res.status(failed ? 500 : 200).json(results)
 }
