@@ -1,6 +1,8 @@
 type Handler = (input: any) => any | Promise<any>
 
 const TRPC_INTERNAL = -32603
+const SYSTEM =
+  'Ты — Амир, ИИ-агент по недвижимости в Казани. 18 лет опыта. Помогаешь с подбором, продажей, выкупом и управлением квартирами. Отвечай кратко, дружелюбно и по делу. По конкретным объектам предлагай связаться с Амиром: +7 927 409-91-79.'
 
 function errorEnvelope(message: string, procedure: string) {
   return {
@@ -12,6 +14,69 @@ function errorEnvelope(message: string, procedure: string) {
       },
     },
   }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+async function groqChat(messages: any[], key: string): Promise<string | null> {
+  try {
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b',
+        temperature: 0.7,
+        messages: [
+          { role: 'system', content: SYSTEM },
+          ...messages.map((m) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: String(m.content || ''),
+          })),
+        ],
+      }),
+    })
+    if (!r.ok) return null
+    const d: any = await r.json()
+    const t = d?.choices?.[0]?.message?.content
+    return t && t.trim() ? t : null
+  } catch {
+    return null
+  }
+}
+
+async function geminiChat(messages: any[], key: string): Promise<string | null> {
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest']
+  const contents = [
+    { role: 'user', parts: [{ text: SYSTEM }] },
+    ...messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: String(m.content || '') }],
+    })),
+  ]
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents }),
+          },
+        )
+        if (!r.ok) {
+          if (r.status === 503) await sleep(800)
+          continue
+        }
+        const d: any = await r.json()
+        const t = d?.candidates?.[0]?.content?.parts?.[0]?.text
+        if (t && t.trim()) return t
+      } catch {
+        /* next attempt */
+      }
+    }
+  }
+  return null
 }
 
 async function sendTelegram(input: any) {
@@ -37,35 +102,17 @@ async function sendTelegram(input: any) {
 async function agentChat(input: any) {
   const data = input?.json || input || {}
   const messages: any[] = data.messages || []
-  const key = process.env.GEMINI_API_KEY
-  if (!key) throw new Error('Missing Gemini key')
-  const system =
-    'Ты — Амир, ИИ-агент по недвижимости в Казани. 18 лет опыта. Помогаешь с подбором, продажей, выкупом и управлением квартирами. Отвечай кратко, дружелюбно и по делу. По конкретным объектам предлагай связаться с Амиром: +7 927 409-91-79.'
-  const contents = [
-    { role: 'user', parts: [{ text: system }] },
-    ...messages.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: String(m.content || '') }],
-    })),
-  ]
-  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest']
-  let lastStatus = 0
-  for (const model of models) {
-    const r = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents }),
-      },
-    )
-    lastStatus = r.status
-    if (!r.ok) continue
-    const d: any = await r.json()
-    const text = d?.candidates?.[0]?.content?.parts?.[0]?.text
-    if (text) return text
+  const groqKey = process.env.GROQ_API_KEY
+  const geminiKey = process.env.GEMINI_API_KEY
+  if (groqKey) {
+    const t = await groqChat(messages, groqKey)
+    if (t) return t
   }
-  throw new Error('Gemini error: ' + lastStatus)
+  if (geminiKey) {
+    const t = await geminiChat(messages, geminiKey)
+    if (t) return t
+  }
+  throw new Error('AI unavailable: groq+gemini failed')
 }
 
 function catalogList() {
