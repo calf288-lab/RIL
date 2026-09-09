@@ -2,7 +2,7 @@ type Handler = (input: any) => any | Promise<any>
 
 const TRPC_INTERNAL = -32603
 const SYSTEM =
-  'Ты — Амир, ИИ-агент по недвижимости в Казани. 18 лет опыта. Помогаешь с подбором, продажей, выкупом и управлением квартирами. Отвечай кратко, дружелюбно и по делу. По конкретным объектам предлагай связаться с Амиром: +7 927 409-91-79.'
+  'Ты — Амир, ИИ-агент по недвижимости в Казани. 18 лет опыта. Отвечай как человек в переписке: 1-3 коротких предложения, без списков, звёздочек и перечислений. В конце задавай ОДИН уточняющий вопрос: район, бюджет, срок или ипотека. По конкретным объектам и сделкам предлагай связаться с Амиром: +7 927 409-91-79.'
 
 function errorEnvelope(message: string, procedure: string) {
   return {
@@ -93,15 +93,15 @@ async function geminiChat(
 
 async function sendTelegram(input: any) {
   const data = input?.json || input || {}
-  const { name, phone, message } = data
+  const { name, phone, contact, message } = data
   const token = process.env.TELEGRAM_BOT_TOKEN
   const chatId = process.env.TELEGRAM_CHAT_ID
   if (!token || !chatId) throw new Error('Missing Telegram config')
   const text =
     '🏠 Новая заявка с сайта\n\nИмя: ' +
     (name || '—') +
-    '\nТелефон: ' +
-    (phone || '—') +
+    '\nКонтакт: ' +
+    (contact || phone || '—') +
     '\nСообщение: ' +
     (message || '—') +
     '\n\n' +
@@ -117,15 +117,17 @@ async function sendTelegram(input: any) {
 
 async function agentChat(input: any) {
   const data = input?.json || input || {}
-  const messages: any[] = data.messages || []
+  const messages: any[] = data.messages || data.history || []
+  const userMessage = data.message ? String(data.message) : ''
+  const chatMessages = userMessage ? [...messages, { role: 'user', content: userMessage }] : messages
   const groqKey = process.env.GROQ_API_KEY
   const geminiKey = process.env.GEMINI_API_KEY
   if (groqKey) {
-    const t = await groqChat(messages, groqKey)
+    const t = await groqChat(chatMessages, groqKey)
     if (t) return replyObject(t)
   }
   if (geminiKey) {
-    const { text, lastStatus } = await geminiChat(messages, geminiKey)
+    const { text, lastStatus } = await geminiChat(chatMessages, geminiKey)
     if (text) return replyObject(text)
     throw new Error('Gemini failed, last status: ' + lastStatus)
   }
@@ -133,11 +135,16 @@ async function agentChat(input: any) {
 }
 
 function catalogList() {
-  return [
-    { id: 1, title: '2-комн., 54 м²', address: 'Мавлютова 31а', price: 8500000 },
-    { id: 2, title: 'Студия, 28 м²', address: 'Сибирский тракт 15', price: 4200000 },
-    { id: 3, title: '3-комн., 78 м²', address: 'Баумана 44', price: 12500000 },
-  ]
+  return {
+    source: 'local',
+    properties: [
+      { title: 'ЖК «Светлая долина»', city: 'Казань', location: 'Советский район', price: '8,4 млн ₽', priceValue: 8.4, meta: '2-комн. · 58 м²', badge: 'Новый дом', description: 'Тихий двор со спортплощадкой, школа рядом и кухня-гостиная для семейного сценария.', mortgageAvailable: true, photoUrl: '/photos/dvor-svetlaya-dolina.jpg' },
+      { title: 'Апартаменты у Кремля', city: 'Казань', location: 'Центр', price: '11,2 млн ₽', priceValue: 11.2, meta: '1-комн. · 42 м²', badge: 'В центре', description: 'Компактный городской формат рядом с набережной и историческим центром.', mortgageAvailable: false, photoUrl: '/photos/kvartal-vid-sverhu.jpg' },
+      { title: 'Семейный квартал «Мой город»', city: 'Набережные Челны', location: 'Новый город', price: '5,9 млн ₽', priceValue: 5.9, meta: '3-комн. · 76 м²', badge: 'Для семьи', description: 'Просторная планировка, закрытая территория и места для хранения.', mortgageAvailable: true, photoUrl: '/photos/gostinaya-otdelka.jpg' },
+      { title: 'Дом у Камы', city: 'Альметьевск', location: 'Центральный район', price: '6,7 млн ₽', priceValue: 6.7, meta: '2-комн. · 61 м²', badge: 'Под ипотеку', description: 'Светлая квартира с отделкой и быстрым выходом на сделку.', mortgageAvailable: true, photoUrl: '/photos/fasad-tsentr.jpg' },
+      { title: 'Квартира с готовой отделкой', city: 'Бугульма', location: 'Микрорайон 3', price: '4,1 млн ₽', priceValue: 4.1, meta: '1-комн. · 38 м²', badge: 'Быстрый заезд', description: 'Готовый вариант для первого жилья или спокойной инвестиции.', mortgageAvailable: true, photoUrl: '/photos/kuhnya-otdelka.jpg' },
+    ],
+  }
 }
 
 const handlers: Record<string, Handler> = {
