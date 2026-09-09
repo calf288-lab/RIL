@@ -287,7 +287,7 @@ export default function Home() {
   }, []);
 
   return <main className="galactic-shell">
-    <header className={`galactic-nav ${scrolled ? "galactic-nav-scrolled" : ""}`}>
+        <header className={`galactic-nav ${scrolled ? "galactic-nav-scrolled" : ""}`}>
       <div className="galactic-nav-inner">
         <a className="galactic-brand" href="#top"><span className="galactic-logo"><Sparkles size={17} /></span><span>Аре<span className="brand-accent">ал</span></span></a>
         <nav className="galactic-links"><a href="#agent">Как работает</a><a href="#properties">Каталог</a><a href="#benefits">Возможности</a><a href="#trust">Об Амире</a><a href="#faq">Вопросы</a><a href="#contact">Контакты</a></nav>
