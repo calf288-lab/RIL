@@ -44,8 +44,8 @@ async function groqChat(messages: any[], key: string): Promise<string | null> {
   }
 }
 
-async function geminiChat(messages: any[], key: string): Promise<string | null> {
-  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest']
+async function geminiChat(messages: any[], key: string): Promise<{ text: string | null; lastStatus: number }> {
+  const models = ['gemini-3.6-flash', 'gemini-3-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
   const contents = [
     { role: 'user', parts: [{ text: SYSTEM }] },
     ...messages.map((m) => ({
@@ -53,6 +53,7 @@ async function geminiChat(messages: any[], key: string): Promise<string | null> 
       parts: [{ text: String(m.content || '') }],
     })),
   ]
+  let lastStatus = 0
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -64,19 +65,20 @@ async function geminiChat(messages: any[], key: string): Promise<string | null> 
             body: JSON.stringify({ contents }),
           },
         )
+        lastStatus = r.status
         if (!r.ok) {
           if (r.status === 503) await sleep(800)
           continue
         }
         const d: any = await r.json()
         const t = d?.candidates?.[0]?.content?.parts?.[0]?.text
-        if (t && t.trim()) return t
+        if (t && t.trim()) return { text: t, lastStatus }
       } catch {
         /* next attempt */
       }
     }
   }
-  return null
+  return { text: null, lastStatus }
 }
 
 async function sendTelegram(input: any) {
@@ -109,10 +111,11 @@ async function agentChat(input: any) {
     if (t) return t
   }
   if (geminiKey) {
-    const t = await geminiChat(messages, geminiKey)
-    if (t) return t
+    const { text, lastStatus } = await geminiChat(messages, geminiKey)
+    if (text) return text
+    throw new Error('Gemini failed, last status: ' + lastStatus)
   }
-  throw new Error('AI unavailable: groq+gemini failed')
+  throw new Error('AI unavailable: no providers configured')
 }
 
 function catalogList() {
