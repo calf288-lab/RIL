@@ -48,7 +48,10 @@ async function groqChat(messages: any[], key: string): Promise<string | null> {
   }
 }
 
-async function geminiChat(messages: any[], key: string): Promise<{ text: string | null; lastStatus: number }> {
+async function geminiChat(
+  messages: any[],
+  key: string,
+): Promise<{ text: string | null; lastStatus: number }> {
   const models = ['gemini-3.6-flash', 'gemini-3-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
   const contents = [
     { role: 'user', parts: [{ text: SYSTEM }] },
@@ -62,7 +65,10 @@ async function geminiChat(messages: any[], key: string): Promise<{ text: string 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const r = await fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key,
+          'https://generativelanguage.googleapis.com/v1beta/models/' +
+            model +
+            ':generateContent?key=' +
+            key,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -92,10 +98,14 @@ async function sendTelegram(input: any) {
   const chatId = process.env.TELEGRAM_CHAT_ID
   if (!token || !chatId) throw new Error('Missing Telegram config')
   const text =
-    '🏠 Новая заявка с сайта\n\nИмя: ' + (name || '—') +
-    '\nТелефон: ' + (phone || '—') +
-    '\nСообщение: ' + (message || '—') +
-    '\n\n' + new Date().toLocaleString('ru-RU')
+    '🏠 Новая заявка с сайта\n\nИмя: ' +
+    (name || '—') +
+    '\nТелефон: ' +
+    (phone || '—') +
+    '\nСообщение: ' +
+    (message || '—') +
+    '\n\n' +
+    new Date().toLocaleString('ru-RU')
   const r = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -137,11 +147,7 @@ const handlers: Record<string, Handler> = {
 }
 
 function getProcedure(req: any): string {
-  const sources = [
-    req.headers?.['x-matched-path'],
-    req.headers?.['x-invoke-path'],
-    req.url,
-  ]
+  const sources = [req.headers?.['x-matched-path'], req.headers?.['x-invoke-path'], req.url]
   for (const s of sources) {
     const m = String(s || '').match(/trpc\/([a-zA-Z0-9_.]+)/)
     if (m) return m[1]
@@ -152,7 +158,7 @@ function getProcedure(req: any): string {
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers': 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return
