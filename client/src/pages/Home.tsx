@@ -293,7 +293,7 @@ export default function Home() {
         <nav className="galactic-links"><a href="#agent">Как работает</a><a href="#properties">Каталог</a><a href="#benefits">Возможности</a><a href="#trust">Об Амире</a><a href="#faq">Вопросы</a><a href="#contact">Контакты</a></nav>
         <div className="galactic-nav-actions"><a className="outline-pill" href="tel:+79274099179" onClick={() => trackGoal("header_phone_click")}><Phone size={14} /> +7 927 409-91-79</a><button className="mobile-toggle" onClick={() => setMobileOpen((value) => !value)}>{mobileOpen ? <X size={19} /> : <Menu size={19} /></button></div>
       </div>
-      {mobileOpen && <div className="galactic-mobile-nav"><a href="#agent" onClick={() => setMobileOpen(false)}>Как работает</a><a href="#properties" onClick={() => setMobileOpen(false)}>Каталог</a><a href="#benefits" onClick={() => setMobileOpen(false)}>Возможности</a><a href="#trust" onClick={() => setMobileOpen(false)}>Об Амире</a><a href="#faq" onClick={() => setMobileOpen(false)}>Вопросы</a><a href="#contact" onClick={() => setMobileOpen(false)}>Контакты</a><a href="tel:+79274099179">📞 +7 927 409-91-79</a></div>}
+      {mobileOpen && <div className="galactic-mobile-nav"><a href="#agent" onClick={() => setMobileOpen(false)}>Как работает</a><a href="#properties" onClick={() => setMobileOpen(false)}>Каталог</a><a href="#benefits" onClick={() => setMobileOpen(false)}>Возможности</a><a href="#trust" onClick={() => setMobileOpen(false)}>Об Амире</a><a href="#faq" onClick={() => setMobileOpen(false)}>Вопросы</a><a href="#contact" onClick={() => setMobileOpen(false)}>Контакты</a><a href="tel:+79274099179">Телефон: +7 927 409-91-79</a></div>}
     </header>
 
     <section id="top" className="galactic-hero starfield">
