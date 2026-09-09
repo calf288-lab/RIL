@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowRight,
@@ -87,13 +87,38 @@ function AgentWidget() {
   const [liveHistory, setLiveHistory] = useState<LiveMessage[]>([]);
   const [liveError, setLiveError] = useState("");
   const [startedAt] = useState(() => Date.now());
+  const liveInputRef = useRef<HTMLInputElement>(null);
   const sendTelegram = trpc.leads.sendTelegram.useMutation();
   const askAI = trpc.agent.chat.useMutation();
 
+  const sendLive = async (text: string) => {
+    const message = text.trim();
+    if (!message || askAI.isPending) return;
+    setLiveError("");
+    const nextHistory = [...liveHistory, { role: "user" as const, content: message }];
+    setLiveHistory(nextHistory);
+    setLiveMessage("");
+    try {
+      const result = await askAI.mutateAsync({ message, history: liveHistory, city: "Казань и Татарстан", purpose, district, mortgage });
+      setLiveHistory([...nextHistory, { role: "assistant", content: result.content }]);
+    } catch (error) {
+      setLiveError(error instanceof Error ? error.message : "Не удалось получить ответ. Попробуйте ещё раз.");
+    }
+  };
+
+  const sendLiveRef = useRef(sendLive);
+  sendLiveRef.current = sendLive;
+
   useEffect(() => {
-    const onOpen = () => {
+    const onOpen = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
       setOpen(true);
       setLiveOpen(true);
+      const message = typeof detail.message === "string" ? detail.message : "";
+      if (message.trim()) {
+        void sendLiveRef.current(message);
+      }
+      setTimeout(() => liveInputRef.current?.focus(), 200);
     };
     window.addEventListener("agent-open", onOpen);
     return () => window.removeEventListener("agent-open", onOpen);
@@ -112,18 +137,7 @@ function AgentWidget() {
 
   const askAgent = async (event: React.FormEvent) => {
     event.preventDefault();
-    const message = liveMessage.trim();
-    if (!message || askAI.isPending) return;
-    setLiveError("");
-    const nextHistory = [...liveHistory, { role: "user" as const, content: message }];
-    setLiveHistory(nextHistory);
-    setLiveMessage("");
-    try {
-      const result = await askAI.mutateAsync({ message, history: liveHistory, city: "Казань и Татарстан", purpose, district, mortgage });
-      setLiveHistory([...nextHistory, { role: "assistant", content: result.content }]);
-    } catch (error) {
-      setLiveError(error instanceof Error ? error.message : "Не удалось получить ответ. Попробуйте ещё раз.");
-    }
+    await sendLive(liveMessage);
   };
 
   const completeContact = async (event: React.FormEvent) => {
@@ -154,17 +168,17 @@ function AgentWidget() {
   };
 
   return (
-    <div className={`agent-dock ${open ? "agent-dock-open" : ""}`}>
+    <div className={`agent-dock ${open ? "agent-dock-open" : ""}`} style={{ position: "fixed", right: 12, bottom: 12, zIndex: 80 }}>
       {!open && <div className="agent-teaser"><span>Подобрать квартиру?</span><button onClick={openAgent}>Спросить Амира <ArrowRight size={14} /></button></div>}
       <button className="agent-launcher" onClick={() => (open ? setOpen(false) : openAgent())} aria-label={open ? "Закрыть ИИ-агента" : "Открыть ИИ-агента"}>
         {open ? <X size={22} /> : <><span className="agent-launcher-pulse" /><Bot size={25} /></>}
       </button>
-      {open && <div className="agent-panel">
+      {open && <div className="agent-panel" style={{ width: "min(380px, calc(100vw - 24px))" }}>
         <div className="agent-panel-head"><div className="agent-avatar"><Bot size={20} /></div><div><b>Амир · ИИ-агент</b><small><span /> Сейчас онлайн</small></div><button onClick={() => setOpen(false)} aria-label="Закрыть"><X size={17} /></button></div>
         <div className="agent-chat">
           <div className="agent-message agent-message-ai">Здравствуйте! Я помогу подобрать квартиру в Казани. Можно начать с пары вопросов — без обязательств и звонков.</div>
           {step === "start" && <div className="agent-options"><button onClick={() => setStep("purpose")}>Подобрать квартиру <ChevronRight size={15} /></button><button onClick={() => setStep("purpose")}>Задать вопрос <ChevronRight size={15} /></button><button onClick={() => setLiveOpen(true)}>Спросить ИИ свободно <MessageCircle size={15} /></button></div>}
-          {liveOpen && <div className="live-ai-chat">{liveHistory.map((item, index) => <div className={`agent-message ${item.role === "user" ? "agent-message-user" : "agent-message-ai"}`} key={`${item.role}-${index}`}>{item.content}</div>)}{askAI.isPending && <div className="agent-message agent-message-ai"><span className="typing-dots"><i /><i /><i /></span> Амир печатает…</div>}<form onSubmit={askAgent} className="live-ai-form"><input value={liveMessage} onChange={(event) => setLiveMessage(event.target.value)} placeholder="Например: что важно проверить при покупке?" aria-label="Сообщение ИИ-агенту" /><button type="submit" disabled={askAI.isPending || !liveMessage.trim()} aria-label="Отправить сообщение"><Send size={14} /></button></form>{liveError && <p className="agent-send-error">{liveError}</p>}</div>}
+          {liveOpen && <div className="live-ai-chat">{liveHistory.map((item, index) => <div className={`agent-message ${item.role === "user" ? "agent-message-user" : "agent-message-ai"}`} key={`${item.role}-${index}`}>{item.content}</div>)}{askAI.isPending && <div className="agent-message agent-message-ai"><span className="typing-dots"><i /><i /><i /></span> Амир печатает…</div>}<form onSubmit={askAgent} className="live-ai-form"><input ref={liveInputRef} value={liveMessage} onChange={(event) => setLiveMessage(event.target.value)} placeholder="Например: что важно проверить при покупке?" aria-label="Сообщение ИИ-агенту" /><button type="submit" disabled={askAI.isPending || !liveMessage.trim()} aria-label="Отправить сообщение"><Send size={14} /></button></form>{liveError && <p className="agent-send-error">{liveError}</p>}</div>}
           {step !== "start" && <div className="agent-message agent-message-user">{purpose || "Хочу подобрать вариант"}</div>}
           {step === "purpose" && <><div className="agent-message agent-message-ai">Для проживания или инвестиций ищете?</div><div className="agent-options two"><button onClick={() => { setPurpose(purposeLabels[0]); setStep("district"); }}>Для проживания</button><button onClick={() => { setPurpose(purposeLabels[1]); setStep("district"); }}>Для инвестиций</button></div></>}
           {step !== "purpose" && step !== "start" && <div className="agent-message agent-message-user">{district || purpose}</div>}
@@ -198,6 +212,35 @@ function PropertyExplorer() {
   const cities = ["Все города", ...Array.from(new Set(catalogProperties.map((property) => property.city)))];
 
   return <section id="properties" className="properties-section"><div className="section-inner"><div className="section-heading property-heading"><span className="section-eyebrow">{catalogQuery.data?.source === "remote" ? "КАТАЛОГ · АВТООБНОВЛЕНИЕ" : "КАТАЛОГ · ОБНОВЛЯЕМАЯ ВЫБОРКА"}</span><h2>Найдите свой<br /><span className="text-gradient-blue">сценарий жизни</span></h2><p>{catalogQuery.data?.source === "remote" ? "Актуальные предложения из подключённого JSON-каталога. Фильтры помогают быстро сузить выбор." : "Актуальные предложения Амира по Казани и Татарстану. Фильтры помогают быстро сузить выбор."}</p></div><div className="property-filters"><label>Город<select value={city} onChange={(event) => setCity(event.target.value)}>{cities.map((item) => <option key={item}>{item}</option>)}</select></label><label>Максимальный бюджет<select value={budget} onChange={(event) => setBudget(event.target.value)}><option>Любой бюджет</option><option value="5">до 5 млн ₽</option><option value="7">до 7 млн ₽</option><option value="9">до 9 млн ₽</option><option value="12">до 12 млн ₽</option></select></label><div className="filter-chips" aria-label="Быстрый фильтр по стоимости"><span className="filter-label">Стоимость</span>{["Любая стоимость", "до 5 млн ₽", "5–8 млн ₽", "от 8 млн ₽"].map((preset) => <button key={preset} className={`filter-chip ${pricePreset === preset ? "active" : ""}`} onClick={() => setPricePreset(preset)}>{preset}</button>)}</div><button className={`filter-chip mortgage-chip ${mortgageOnly ? "active" : ""}`} onClick={() => setMortgageOnly((value) => !value)}><Check size={13} /> Ипотека доступна</button><span className="property-result-count">Найдено: <b>{filteredProperties.length}</b></span></div><div className="property-grid">{filteredProperties.map((property, index) => <article className={`property-card property-card-${index % 5}`} key={property.title}><div className="property-visual">{property.photoUrl ? <img src={property.photoUrl} alt="" /> : <Building2 size={30} />}<span>{property.badge}</span>{property.mortgageAvailable && <em className="mortgage-badge">Ипотека</em>}</div><div className="property-card-body"><div className="property-location"><MapPin size={12} /> {property.city} · {property.location}</div><h3>{property.title}</h3><p>{property.description}</p><div className="property-card-meta"><span>{property.meta}</span><b>{property.price}</b></div><button onClick={() => { trackGoal("property_card_click", { title: property.title, city: property.city }); scrollToId("agent"); }}>Обсудить с Амиром <ArrowRight size={14} /></button></div></article>)}</div>{filteredProperties.length === 0 && <div className="property-empty">По этим параметрам предложений пока нет. Попробуйте изменить фильтры.</div>}</div></section>;
+}
+
+function AgentPreviewMock() {
+  const [mockQuestion, setMockQuestion] = useState("");
+  const submitMock = (event: React.FormEvent) => {
+    event.preventDefault();
+    const message = mockQuestion.trim();
+    if (!message) return;
+    trackGoal("agent_mock_question", { message });
+    window.dispatchEvent(new CustomEvent("agent-open", { detail: { message } }));
+    setMockQuestion("");
+  };
+  return (
+    <div className="agent-preview-card" onClick={() => { trackGoal("agent_preview_open"); window.dispatchEvent(new CustomEvent("agent-open")); }} style={{ cursor: "pointer" }}>
+      <div className="preview-glow" />
+      <div className="preview-head"><div className="agent-avatar"><Bot size={21} /></div><div><b>Амир · ИИ-агент</b><small><span /> Сейчас онлайн</small></div><span className="preview-dots">•••</span></div>
+      <div className="preview-body">
+        <div className="agent-message agent-message-ai">Приветствую! Ищете квартиру для проживания или инвестиций в Казани?</div>
+        <div className="preview-quick"><span>Для проживания</span><span>Для инвестиций</span></div>
+        <div className="agent-message agent-message-user">Для проживания. Рассматриваю центр.</div>
+        <div className="agent-message agent-message-ai">Понял. Нужна ли помощь с одобрением ипотеки?</div>
+        <form className="live-ai-form" style={{ marginTop: 10 }} onClick={(event) => event.stopPropagation()} onSubmit={submitMock}>
+          <input value={mockQuestion} onChange={(event) => setMockQuestion(event.target.value)} placeholder="Напишите свой вопрос прямо здесь…" aria-label="Вопрос ИИ-агенту из макета" />
+          <button type="submit" disabled={!mockQuestion.trim()} aria-label="Отправить вопрос агенту"><Send size={14} /></button>
+        </form>
+      </div>
+      <div className="preview-footer"><MessageCircle size={13} /> Диалог продолжается без перезагрузки страницы</div>
+    </div>
+  );
 }
 
 export default function Home() {
@@ -243,7 +286,7 @@ export default function Home() {
     </section>
 
     <section id="agent" className="agent-intro section-dark">
-      <div className="section-inner agent-intro-grid"><div className="agent-intro-copy"><span className="section-eyebrow">ПЛАВАЮЩИЙ АГЕНТ НА САЙТЕ</span><h2>Помогает посетителю<br /><span className="text-gradient-blue">не потеряться в выборе</span></h2><p>Вместо навязчивого звонка — спокойный диалог в удобный момент. Амир задаёт несколько вопросов, отвечает по делу и предлагает контакт только когда это действительно полезно.</p><button className="inline-link" onClick={() => { trackGoal("agent_intro_open"); window.dispatchEvent(new CustomEvent("agent-open")); }}>Открыть агента внизу экрана <ArrowRight size={16} /></button></div><div className="agent-preview-card" onClick={() => { trackGoal("agent_preview_open"); window.dispatchEvent(new CustomEvent("agent-open")); }} style={{ cursor: "pointer" }}><div className="preview-glow" /><div className="preview-head"><div className="agent-avatar"><Bot size={21} /></div><div><b>Амир · ИИ-агент</b><small><span /> Сейчас онлайн</small></div><span className="preview-dots">•••</span></div><div className="preview-body"><div className="agent-message agent-message-ai">Приветствую! Ищете квартиру для проживания или инвестиций в Казани?</div><div className="preview-quick"><span>Для проживания</span><span>Для инвестиций</span></div><div className="agent-message agent-message-user">Для проживания. Рассматриваю центр.</div><div className="agent-message agent-message-ai">Понял. Нужна ли помощь с одобрением ипотеки?</div></div><div className="preview-footer"><MessageCircle size={13} /> Диалог продолжается без перезагрузки страницы</div></div></div>
+      <div className="section-inner agent-intro-grid"><div className="agent-intro-copy"><span className="section-eyebrow">ПЛАВАЮЩИЙ АГЕНТ НА САЙТЕ</span><h2>Помогает посетителю<br /><span className="text-gradient-blue">не потеряться в выборе</span></h2><p>Вместо навязчивого звонка — спокойный диалог в удобный момент. Амир задаёт несколько вопросов, отвечает по делу и предлагает контакт только когда это действительно полезно.</p><button className="inline-link" onClick={() => { trackGoal("agent_intro_open"); window.dispatchEvent(new CustomEvent("agent-open")); }}>Открыть агента внизу экрана <ArrowRight size={16} /></button></div><AgentPreviewMock /></div>
     </section>
 
     <PropertyExplorer />
