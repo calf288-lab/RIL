@@ -18,9 +18,71 @@ function errorEnvelope(message: string, procedure: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + '…' : s)
+const digitsOf = (s: string) => s.replace(/\D/g, '')
+
+function findPhone(text: string): string | null {
+  const m = String(text).match(/(?:\+?\d)[\d\s\-\(\)\.]{8,}\d/g)
+  if (!m) return null
+  for (const cand of m) {
+    const d = digitsOf(cand)
+    if (d.length >= 10 && d.length <= 15) return d
+  }
+  return null
+}
+
+function normalizePhone(d: string): string {
+  if (d.length === 11 && (d[0] === '8' || d[0] === '7')) return '+7' + d.slice(1)
+  if (d.length === 10) return '+7' + d
+  return '+' + d
+}
 
 function replyObject(t: string) {
   return { reply: t, text: t, message: t, content: t, answer: t, response: t }
+}
+
+async function pushLead(data: any) {
+  const token = process.env.TELEGRAM_BOT_TOKEN
+  const chatId = process.env.TELEGRAM_CHAT_ID
+  if (!token || !chatId) throw new Error('Missing Telegram config')
+  const name = data.name || '—'
+  const contact = data.contact || data.phone || '—'
+  const source = data.source || '—'
+  const city = data.city || '—'
+  const district = data.district || '—'
+  const purpose = data.purpose || '—'
+  const mortgage = data.mortgage || '—'
+  const channel = data.channel || '—'
+  const properties =
+    Array.isArray(data.properties) && data.properties.length ? data.properties.join('\n') : '—'
+  const conversation = data.conversation ? String(data.conversation) : '—'
+  const pageUrl = data.pageUrl || data.page || '—'
+  const referrer = data.referrer || '—'
+  const utmRaw = data.utm && typeof data.utm === 'object' ? data.utm : {}
+  const utmKeys = Object.keys(utmRaw)
+  const utm = utmKeys.length ? utmKeys.map((k) => `${k}=${utmRaw[k]}`).join(', ') : '—'
+  let text =
+    '🏠 Новый лид · Ареал\n\n' +
+    'Имя: ' + name + '\n' +
+    'Контакт: ' + contact + '\n' +
+    'Источник: ' + source + '\n' +
+    'Город / район: ' + city + ' / ' + district + '\n' +
+    'Цель: ' + purpose + '\n' +
+    'Ипотека: ' + mortgage + '\n' +
+    'Канал: ' + channel + '\n' +
+    'Объекты:\n' + clip(properties, 800) + '\n\n' +
+    'Диалог:\n' + clip(conversation, 1500) + '\n\n' +
+    'Страница: ' + pageUrl + '\n' +
+    'Referrer: ' + referrer + '\n' +
+    'UTM: ' + utm + '\n' +
+    'Время: ' + new Date().toLocaleString('ru-RU')
+  text = clip(text, 4000)
+  const r = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  })
+  if (!r.ok) throw new Error('Telegram error: ' + r.status)
+  return { success: true }
 }
 
 async function groqChat(messages: any[], key: string): Promise<string | null> {
@@ -93,49 +155,7 @@ async function geminiChat(
 }
 
 async function sendTelegram(input: any) {
-  const data = input?.json || input || {}
-  const token = process.env.TELEGRAM_BOT_TOKEN
-  const chatId = process.env.TELEGRAM_CHAT_ID
-  if (!token || !chatId) throw new Error('Missing Telegram config')
-  const name = data.name || '—'
-  const contact = data.contact || data.phone || '—'
-  const source = data.source || '—'
-  const city = data.city || '—'
-  const district = data.district || '—'
-  const purpose = data.purpose || '—'
-  const mortgage = data.mortgage || '—'
-  const channel = data.channel || '—'
-  const properties =
-    Array.isArray(data.properties) && data.properties.length ? data.properties.join('\n') : '—'
-  const conversation = data.conversation ? String(data.conversation) : '—'
-  const pageUrl = data.pageUrl || data.page || '—'
-  const referrer = data.referrer || '—'
-  const utmRaw = data.utm && typeof data.utm === 'object' ? data.utm : {}
-  const utmKeys = Object.keys(utmRaw)
-  const utm = utmKeys.length ? utmKeys.map((k) => `${k}=${utmRaw[k]}`).join(', ') : '—'
-  let text =
-    '🏠 Новый лид · Ареал\n\n' +
-    'Имя: ' + name + '\n' +
-    'Контакт: ' + contact + '\n' +
-    'Источник: ' + source + '\n' +
-    'Город / район: ' + city + ' / ' + district + '\n' +
-    'Цель: ' + purpose + '\n' +
-    'Ипотека: ' + mortgage + '\n' +
-    'Канал: ' + channel + '\n' +
-    'Объекты:\n' + clip(properties, 800) + '\n\n' +
-    'Диалог:\n' + clip(conversation, 1500) + '\n\n' +
-    'Страница: ' + pageUrl + '\n' +
-    'Referrer: ' + referrer + '\n' +
-    'UTM: ' + utm + '\n' +
-    'Время: ' + new Date().toLocaleString('ru-RU')
-  text = clip(text, 4000)
-  const r = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  })
-  if (!r.ok) throw new Error('Telegram error: ' + r.status)
-  return { success: true }
+  return pushLead(input?.json || input || {})
 }
 
 async function agentChat(input: any) {
@@ -145,16 +165,36 @@ async function agentChat(input: any) {
   const chatMessages = userMessage ? [...messages, { role: 'user', content: userMessage }] : messages
   const groqKey = process.env.GROQ_API_KEY
   const geminiKey = process.env.GEMINI_API_KEY
+  let answer: string | null = null
   if (groqKey) {
-    const t = await groqChat(chatMessages, groqKey)
-    if (t) return replyObject(t)
+    answer = await groqChat(chatMessages, groqKey)
   }
-  if (geminiKey) {
-    const { text, lastStatus } = await geminiChat(chatMessages, geminiKey)
-    if (text) return replyObject(text)
-    throw new Error('Gemini failed, last status: ' + lastStatus)
+  if (!answer && geminiKey) {
+    const g = await geminiChat(chatMessages, geminiKey)
+    answer = g.text
+    if (!answer) throw new Error('Gemini failed, last status: ' + g.lastStatus)
   }
-  throw new Error('AI unavailable: no providers configured')
+  if (!answer) throw new Error('AI unavailable: no providers configured')
+  const phoneDigits = findPhone(userMessage)
+  if (phoneDigits) {
+    const conversation = chatMessages
+      .concat([{ role: 'assistant', content: answer }])
+      .map((m) => (m.role === 'user' ? 'Клиент: ' : 'Амир: ') + m.content)
+      .join('\n')
+    pushLead({
+      name: 'Посетитель',
+      contact: normalizePhone(phoneDigits),
+      source: 'Ареал · ИИ-чат (автозахват телефона)',
+      city: data.city || 'Казань и Татарстан',
+      district: data.district || 'Не указан',
+      purpose: data.purpose || 'Не указана',
+      mortgage: data.mortgage || 'Не указан',
+      channel: 'chat-auto',
+      conversation,
+      properties: [],
+    }).catch(() => {})
+  }
+  return replyObject(answer)
 }
 
 function catalogList() {
